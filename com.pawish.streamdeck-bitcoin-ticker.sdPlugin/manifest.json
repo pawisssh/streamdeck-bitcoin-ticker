@@ -1,0 +1,47 @@
+{
+	"Name": "Bitcoin Ticker",
+	"Version": "0.1.0.0",
+	"Author": "Pawish Gawinseth",
+	"Actions": [
+		{
+			"Name": "Bitcoin Ticker",
+			"UUID": "com.pawish.streamdeck-bitcoin-ticker.increment",
+			"Icon": "imgs/actions/counter/icon",
+			"Tooltip": "Real-time crypto prices on your Stream Deck.",
+			"PropertyInspectorPath": "ui/bitcoin-ticker.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/counter/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		}
+	],
+	"Category": "Finance",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"CodePath": "bin/plugin.js",
+	"Description": "Real-time crypto prices on your Stream Deck. View BTC, ETH, % change, and trends at a glance—clean, fast, and customizable.",
+	"Icon": "imgs/plugin/marketplace",
+	"SDKVersion": 2,
+	"Software": {
+		"MinimumVersion": "6.5"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "12"
+		},
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "20",
+		"Debug": "enabled"
+	},
+	"UUID": "com.pawish.streamdeck-bitcoin-ticker"
+}
