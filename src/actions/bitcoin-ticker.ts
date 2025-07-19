@@ -1,8 +1,8 @@
 import { action, KeyDownEvent, SingletonAction, WillAppearEvent, WillDisappearEvent, JsonObject } from "@elgato/streamdeck";
 
 interface TickerSettings extends JsonObject {
-	symbol?: string;    // e.g., BTCUSDT
-	currency?: string;  // e.g., BTC (derived from symbol)
+	symbol?: string;
+	currency?: string;
 }
 
 interface Binance24hrTickerResponse {
@@ -31,102 +31,83 @@ interface Binance24hrTickerResponse {
 export class BitcoinTicker extends SingletonAction<TickerSettings> {
 	private intervals: Map<string, NodeJS.Timeout> = new Map();
 	private action: Map<string, WillAppearEvent<TickerSettings>> = new Map();
-	// ลบ previousPrices และ priceHistory เพราะไม่ต้องใช้แล้ว
-	private canvas: any;
-	private ctx: any;
-  
+	private lastData: Map<string, { symbol: string; currentPrice: string; arrow: string; arrowColor: string; changeStr: string; tickerColor: string }> = new Map();
+
 	override async onWillAppear(ev: WillAppearEvent<TickerSettings>) {
-	  const actionId = ev.action.id;
-	  
-	  // เก็บ action reference
-	  this.action.set(actionId, ev);
-	  
-	  // ล้าง interval เก่าถ้ามี
-	  if (this.intervals.has(actionId)) {
-		clearInterval(this.intervals.get(actionId)!);
-	  }
-	  
-	  await this.updatePrice(ev);
-	  
-	  // สร้าง interval ใหม่สำหรับ action นี้
-	  const intervalId = setInterval(async () => {
-		const currentAction = this.action.get(actionId);
-		if (currentAction) {
-		  // อ่านค่า settings ใหม่ทุกครั้งจาก action
-		  const currentSettings = await currentAction.action.getSettings() as TickerSettings;
-		  
-		  console.log(`Interval - Raw settings:`, currentSettings); // Debug log
-		  console.log(`Interval - Symbol from settings:`, currentSettings.symbol); // Debug log
-		  
-		  const updatedEvent = {
-			...currentAction,
-			payload: {
-			  ...currentAction.payload,
-			  settings: currentSettings
-			}
-		  };
-		  await this.updatePrice(updatedEvent);
-		}
-	  }, 60 * 1000);
-	  this.intervals.set(actionId, intervalId);
-	}
-
-	// เพิ่ม method สำหรับ handle การเปลี่ยนแปลง settings
-	override async onDidReceiveSettings(ev: any) {
-	  console.log(`onDidReceiveSettings called with:`, ev.payload?.settings); // Debug log
-	  const actionId = ev.action.id;
-	  this.action.set(actionId, ev);
-	  await this.updatePrice(ev);
-	}
-  
-	async updatePrice(ev: WillAppearEvent<TickerSettings> | any) {
-	  try {
 		const actionId = ev.action.id;
-		
-		// ดึงค่า symbol จาก settings ปัจจุบัน
-		const settings = ev.payload?.settings || {};
-		const symbol = (settings.symbol || "BTCUSDT").toUpperCase();
-		
-		console.log(`UpdatePrice - Full settings:`, settings); // Debug log
-		console.log(`UpdatePrice - Symbol used: ${symbol}`); // Debug log
-		
-		// สร้าง currency label จาก symbol (เอา USDT ออก)
-		const currency = symbol.replace("USDT", "").replace("USDC", "");
-		
-		// ใช้ Binance 24hr ticker statistics API แทน price API
-		const res = await fetch(
-		  `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`
-		);
-		const json = await res.json() as Binance24hrTickerResponse;
-		
-		// ดึงข้อมูลจาก API response
-		const currentPrice = parseFloat(json.lastPrice);
-		const priceChange = parseFloat(json.priceChange);
-		const priceChangePercent = parseFloat(json.priceChangePercent);
-		
-		console.log(`Price: ${currentPrice}, Change: ${priceChange}, Change%: ${priceChangePercent}`); // Debug log
-		
-		// คำนวณ arrow และสีจากข้อมูล API
-		let arrow = "■"; // Default arrow
-		let arrowColor = "#5c5c5c"; // Default color
-		let tickerColor = "#4b4b4b";
-		let changeStr = `${Math.abs(priceChangePercent).toFixed(2)}%`;
+		this.action.set(actionId, ev);
+		if (this.intervals.has(actionId)) clearInterval(this.intervals.get(actionId)!);
+		await this.updatePrice(ev);
+		const intervalId = setInterval(async () => {
+			const currentAction = this.action.get(actionId);
+			if (currentAction) {
+				const currentSettings = await currentAction.action.getSettings() as TickerSettings;
+				const updatedEvent = {
+					...currentAction,
+					payload: {
+						...currentAction.payload,
+						settings: currentSettings
+					}
+				};
+				await this.updatePrice(updatedEvent);
+			}
+		}, 60 * 1000);
+		this.intervals.set(actionId, intervalId);
+	}
 
-		if (priceChange > 0) {
-			arrow = "▲";
-			arrowColor = "#34C759"; // Green
-			tickerColor = "#275C35";
-		} else if (priceChange < 0) {
-			arrow = "▼";
-			arrowColor = "#FF3B30"; // Red
-			tickerColor = "#650212";
-		} else {
-			arrow = "■";
-			arrowColor = "#c5c5c5"; // Gray for no change
-			tickerColor = "#4b4b4b";
+	override async onDidReceiveSettings(ev: any) {
+		const actionId = ev.action.id;
+		this.action.set(actionId, ev);
+		await this.updatePrice(ev);
+	}
+
+	async updatePrice(ev: WillAppearEvent<TickerSettings> | any) {
+		const actionId = ev.action.id;
+		try {
+			const settings = ev.payload?.settings || {};
+			const symbol = (settings.symbol || "BTCUSDT").toUpperCase();
+			const currency = symbol.replace("USDT", "").replace("USDC", "");
+
+			const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
+			const json = await res.json() as Binance24hrTickerResponse;
+
+			const currentPrice = parseFloat(json.lastPrice).toFixed(2);
+			const priceChange = parseFloat(json.priceChange);
+			const priceChangePercent = parseFloat(json.priceChangePercent);
+
+			let arrow = "■";
+			let arrowColor = "#5c5c5c";
+			let tickerColor = "#4b4b4b";
+			let changeStr = `${Math.abs(priceChangePercent).toFixed(2)}%`;
+
+			if (priceChange > 0) {
+				arrow = "▲";
+				arrowColor = "#34C759";
+				tickerColor = "#275C35";
+			} else if (priceChange < 0) {
+				arrow = "▼";
+				arrowColor = "#FF3B30";
+				tickerColor = "#650212";
+			}
+
+			this.lastData.set(actionId, { symbol: currency, currentPrice, arrow, arrowColor, changeStr, tickerColor });
+
+			const svg = this.buildSVG(currency, currentPrice, arrow, arrowColor, changeStr, tickerColor);
+			await ev.action.setImage(`data:image/svg+xml,${encodeURIComponent(svg)}`);
+		} catch (e) {
+			const fallback = this.lastData.get(actionId);
+			if (fallback) {
+				const svg = this.buildSVG(fallback.symbol, fallback.currentPrice, fallback.arrow, fallback.arrowColor, fallback.changeStr, fallback.tickerColor);
+				await ev.action.setImage(`data:image/svg+xml,${encodeURIComponent(svg)}`);
+			} else {
+				await ev.action.setTitle("");
+			}
+			console.error("Ticker Fetch Failed:", e);
 		}
-		
-		const svg = `
+	}
+
+	buildSVG(symbol: string, currentPrice: string, arrow: string, arrowColor: string, changeStr: string, tickerColor: string): string {
+		return `
 		<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
 			<defs>
 				<linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
@@ -136,29 +117,21 @@ export class BitcoinTicker extends SingletonAction<TickerSettings> {
 				</linearGradient>
 			</defs>
 			<rect width="100" height="100" fill="url(#grad)"/>
-			<text x="6" y="24" font-size="24" font-weight="900" fill="white" font-family="Arial">${currency}</text>
+			<text x="6" y="24" font-size="24" font-weight="900" fill="white" font-family="Arial">${symbol}</text>
 			<text x="72" y="88" font-size="17" font-weight="900" fill="${arrowColor}" font-family="Arial">${arrow}</text>
-  			<text x="6" y="50" font-size="17" font-weight="700" fill="white" font-family="Arial">${currentPrice}</text>
+			<text x="6" y="50" font-size="17" font-weight="700" fill="white" font-family="Arial">${currentPrice}</text>
 			<text x="6" y="88" font-size="17" font-weight="700" fill="${arrowColor}" font-family="Arial">${changeStr}</text>
 		</svg>
 		`;
-
-		await ev.action.setImage(`data:image/svg+xml,${encodeURIComponent(svg)}`);	
-		  
-    } 	catch (e) {
-      	console.error("Ticker Fetch Failed:", e);
-    }
 	}
-  
+
 	override onWillDisappear(ev: WillDisappearEvent<TickerSettings>) {
-	  const actionId = ev.action.id;
-	  
-	  if (this.intervals.has(actionId)) {
-		clearInterval(this.intervals.get(actionId)!);
-		this.intervals.delete(actionId);
-	  }
-	  
-	  // ล้าง action reference เท่านั้น (ไม่ต้องล้าง previousPrices และ priceHistory แล้ว)
-	  this.action.delete(actionId);
+		const actionId = ev.action.id;
+		if (this.intervals.has(actionId)) {
+			clearInterval(this.intervals.get(actionId)!);
+			this.intervals.delete(actionId);
+		}
+		this.action.delete(actionId);
+		this.lastData.delete(actionId);
 	}
 }
