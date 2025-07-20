@@ -32,6 +32,7 @@ export class BitcoinTicker extends SingletonAction<TickerSettings> {
 	private intervals: Map<string, NodeJS.Timeout> = new Map();
 	private action: Map<string, WillAppearEvent<TickerSettings>> = new Map();
 	private lastData: Map<string, { symbol: string; currentPrice: string; arrow: string; arrowColor: string; changeStr: string; tickerColor: string }> = new Map();
+	private lastKeyPressTime: Map<string, number> = new Map(); // 🆕 เพิ่ม map เก็บเวลาล่าสุดที่กดปุ่ม
 
 	override async onWillAppear(ev: WillAppearEvent<TickerSettings>) {
 		const actionId = ev.action.id;
@@ -53,6 +54,20 @@ export class BitcoinTicker extends SingletonAction<TickerSettings> {
 			}
 		}, 60 * 1000);
 		this.intervals.set(actionId, intervalId);
+	}
+
+	override async onKeyDown(ev: KeyDownEvent<TickerSettings>): Promise<void> {
+		const actionId = ev.action.id;
+		const now = Date.now();
+		const lastPressed = this.lastKeyPressTime.get(actionId) || 0;
+
+		if (now - lastPressed >= 60 * 1000) { // มากกว่า 1 นาที
+			this.lastKeyPressTime.set(actionId, now);
+			await this.updatePrice(ev);
+		} else {
+			// กดเร็วเกินไป: do nothing
+			console.log(`[SKIPPED] Button pressed within 1 minute interval: ${actionId}`);
+		}
 	}
 
 	override async onDidReceiveSettings(ev: any) {
