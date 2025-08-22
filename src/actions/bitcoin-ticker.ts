@@ -27,6 +27,23 @@ interface Binance24hrTickerResponse {
 	count: number;
 }
 
+function formatPriceDynamic(price: number): string {
+	if (price >= 100000) {
+		return Math.round(price).toLocaleString();
+	} else if (price >= 100) {
+		return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+	} else if (price >= 1) {
+		const [intPart, decPart = ""] = price.toFixed(8).split(".");
+		const availableDecimals = Math.max(0, 8 - intPart.length - 1);
+		return parseFloat(`${intPart}.${decPart.slice(0, availableDecimals)}`).toLocaleString(undefined, {
+			minimumFractionDigits: availableDecimals,
+			maximumFractionDigits: availableDecimals
+		});
+	} else {
+		return price.toFixed(8).replace(/(?:\.(\d*?[1-9]))0+$/g, ".$1").replace(/\.0+$/, "");
+	}
+}
+
 @action({ UUID: "com.pawish.streamdeck-bitcoin-ticker.increment" })
 export class BitcoinTicker extends SingletonAction<TickerSettings> {
 	private intervals: Map<string, NodeJS.Timeout> = new Map();
@@ -86,7 +103,8 @@ export class BitcoinTicker extends SingletonAction<TickerSettings> {
 			const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`);
 			const json = await res.json() as Binance24hrTickerResponse;
 
-			const currentPrice = parseFloat(json.lastPrice).toFixed(2);
+			const rawPrice = parseFloat(json.lastPrice);
+			const currentPrice = formatPriceDynamic(rawPrice);
 			const priceChange = parseFloat(json.priceChange);
 			const priceChangePercent = parseFloat(json.priceChangePercent);
 
@@ -114,8 +132,10 @@ export class BitcoinTicker extends SingletonAction<TickerSettings> {
 			if (fallback) {
 				const svg = this.buildSVG(fallback.symbol, fallback.currentPrice, fallback.arrow, fallback.arrowColor, fallback.changeStr, fallback.tickerColor);
 				await ev.action.setImage(`data:image/svg+xml,${encodeURIComponent(svg)}`);
+				await ev.action.setTitle(""); // เคลียร์ "--" หรือ "Error"
 			} else {
-				await ev.action.setTitle("");
+				await ev.action.setTitle("Error");
+  				setTimeout(() => ev.action.setTitle(""), 3000);
 			}
 			console.error("Ticker Fetch Failed:", e);
 		}
